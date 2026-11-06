@@ -217,10 +217,18 @@ bool VlanAdapter::recv(NetPacket* pkt)
 
 		const MAC_Address& dst = *reinterpret_cast<const MAC_Address*>(&pkt->buffer[0]);
 		const MAC_Address& src = *reinterpret_cast<const MAC_Address*>(&pkt->buffer[6]);
-		// Accept unicast to us plus broadcast/multicast (group bit); drop our own echoes.
-		const bool group = (dst.bytes[0] & 1) != 0;
-		if ((!group && dst != ps2MAC) || src == ps2MAC)
+		// The switch already decides what reaches this port, so only drop our own echoes.
+		// Unicast to a MAC other than the EEPROM one is still delivered (and noted once),
+		// in case the game programs its own station address.
+		if (src == ps2MAC)
 			continue;
+		const bool group = (dst.bytes[0] & 1) != 0;
+		if (!group && dst != ps2MAC && !notedForeignDst)
+		{
+			notedForeignDst = true;
+			LinkProbe::Note("VLAN: unicast for %02x:%02x:%02x:%02x:%02x:%02x (not our EEPROM MAC) delivered anyway",
+				dst.bytes[0], dst.bytes[1], dst.bytes[2], dst.bytes[3], dst.bytes[4], dst.bytes[5]);
+		}
 
 		pkt->size = got;
 		return true;

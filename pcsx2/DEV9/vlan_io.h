@@ -52,4 +52,5 @@ private:
 	sockaddr_in peer{};
 	bool initialised = false;
 	std::chrono::steady_clock::time_point lastHello{};
+	bool notedForeignDst = false;
 };
