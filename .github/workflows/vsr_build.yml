@@ -1,0 +1,33 @@
+name: vs-rollback link probe build
+
+# Builds only the Windows AVX2 MSVC configuration for the vs-rollback
+# link-test harness (UDP virtual LAN backend + LinkProbe logger).
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "vsr-*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint_vs_proj_files:
+    name: Lint VS Project Files
+    runs-on: windows-2025-vs2026
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+      - name: Verify VS Project Files
+        run: .github\workflows\scripts\windows\validate-vs-filters.ps1
+
+  build_qt_avx2:
+    needs: lint_vs_proj_files
+    name: "AVX2"
+    uses: ./.github/workflows/windows_build_qt.yml
+    with:
+      jobName: "MSVC AVX2"
+      artifactPrefixName: "pcsx2x6-vsr-linkprobe-windows-x64-avx2"
+      configuration: Release AVX2
+    secrets: inherit

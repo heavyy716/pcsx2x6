@@ -10,6 +10,7 @@
 #include "ps2/BiosTools.h"
 #include "VMManager.h"
 #include "DEV9/ACJV.h"
+#include "DEV9/LinkProbe.h"
 
 #include <ctype.h>
 #include <fmt/format.h>
@@ -1214,6 +1215,9 @@ namespace R3000A
 
 			const std::string modname = iopMemReadString(a0 + 12);
 			const u32 version = iopMemRead32(a0 + 8);
+			if (LinkProbe::enabled)
+				LinkProbe::Note("IRX RegisterLibraryEntries %.8s version %x.%02x", modname.c_str(),
+					(version >> 8) & 0xFF, version & 0xFF);
 			if (modname == "thbase")
 			{
 				CurrentBiosInformation.iopThreadListAddr = GetThreadList(a0, version);

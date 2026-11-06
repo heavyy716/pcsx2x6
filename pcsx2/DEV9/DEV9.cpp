@@ -32,6 +32,7 @@
 #include "ACDEV.h"
 #include "Config.h"
 #include "smap.h"
+#include "LinkProbe.h"
 
 #ifdef _WIN32
 #pragma warning(disable : 4244)
@@ -198,6 +199,8 @@ s32 DEV9open()
 			EmuConfig.DEV9.HddEnable = false;
 	}
 
+	LinkProbe::Init();
+
 	if (EmuConfig.DEV9.EthEnable)
 		InitNet();
 
@@ -212,6 +215,7 @@ void DEV9close()
 	dev9.dma_iop_ptr = nullptr;
 	dev9.ata->Close();
 	TermNet();
+	LinkProbe::Shutdown();
 	isRunning = false;
 }
 

@@ -15,6 +15,8 @@
 #endif
 #include "pcap_io.h"
 #include "sockets.h"
+#include "vlan_io.h"
+#include "LinkProbe.h"
 
 #include "PacketReader/EthernetFrame.h"
 #include "PacketReader/IP/IP_Packet.h"
@@ -37,7 +39,11 @@ void NetRxThread()
 			std::lock_guard rx_lock(rx_mutex);
 			//Check if we can still rx
 			if (rx_fifo_can_rx())
+			{
+				if (LinkProbe::enabled)
+					LinkProbe::Frame("RX", tmp.buffer, tmp.size);
 				rx_process(&tmp);
+			}
 			else
 				Console.Error("DEV9: rx_fifo_can_rx() false after nif->recv(), dropping");
 		}
@@ -49,6 +55,8 @@ void NetRxThread()
 
 void tx_put(NetPacket* pkt)
 {
+	if (LinkProbe::enabled)
+		LinkProbe::Frame("TX", pkt->buffer, pkt->size);
 	if (nif != nullptr)
 		nif->send(pkt);
 	//pkt must be copied if its not processed by here, since it can be allocated on the callers stack
@@ -63,6 +71,17 @@ void ad_reset()
 NetAdapter* GetNetAdapter()
 {
 	NetAdapter* na = nullptr;
+
+	if (VlanAdapter::IsRequested())
+	{
+		na = static_cast<NetAdapter*>(new VlanAdapter());
+		if (!na->isInitialised())
+		{
+			delete na;
+			return 0;
+		}
+		return na;
+	}
 
 	switch (EmuConfig.DEV9.EthApi)
 	{

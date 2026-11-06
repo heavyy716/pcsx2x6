@@ -13,6 +13,7 @@
 #include "DEV9/ACJV.h"
 #include "DEV9/ACCORE.h"
 #include "DEV9/ACUART.h"
+#include "DEV9/LinkProbe.h"
 #include "IopHw.h"
 
 uptr *psxMemWLUT = nullptr;
@@ -101,7 +102,7 @@ void iopMemReset()
 	std::memset(iopMem, 0, sizeof(*iopMem));
 }
 
-u8 iopMemRead8(u32 mem)
+static u8 iopMemRead8_raw(u32 mem)
 {
 	mem &= 0x1fffffff;
 	u32 t = mem >> 16;
@@ -153,7 +154,7 @@ u8 iopMemRead8(u32 mem)
 	}
 }
 
-u16 iopMemRead16(u32 mem)
+static u16 iopMemRead16_raw(u32 mem)
 {
 	u16 V;
 	mem &= 0x1fffffff;
@@ -233,7 +234,7 @@ u16 iopMemRead16(u32 mem)
 	}
 }
 
-u32 iopMemRead32(u32 mem)
+static u32 iopMemRead32_raw(u32 mem)
 {
 	mem &= 0x1fffffff;
 	u32 t = mem >> 16;
@@ -297,7 +298,7 @@ u32 iopMemRead32(u32 mem)
 	}
 }
 
-void iopMemWrite8(u32 mem, u8 value)
+static void iopMemWrite8_raw(u32 mem, u8 value)
 {
 	mem &= 0x1fffffff;
 	u32 t = mem >> 16;
@@ -366,7 +367,7 @@ void iopMemWrite8(u32 mem, u8 value)
 	}
 }
 
-void iopMemWrite16(u32 mem, u16 value)
+static void iopMemWrite16_raw(u32 mem, u16 value)
 {
 	mem &= 0x1fffffff;
 	u32 t = mem >> 16;
@@ -457,7 +458,7 @@ void iopMemWrite16(u32 mem, u16 value)
 	}
 }
 
-void iopMemWrite32(u32 mem, u32 value)
+static void iopMemWrite32_raw(u32 mem, u32 value)
 {
 	mem &= 0x1fffffff;
 	u32 t = mem >> 16;
@@ -608,6 +609,52 @@ bool iopMemSafeWriteBytes(u32 mem, const void* src, u32 size)
 	}
 
 	return true;
+}
+
+// vs-rollback link probe: observe IOP MMIO on DEV9 / arcade / SIO / USB / i.LINK ranges.
+u8 iopMemRead8(u32 mem)
+{
+	const u8 ret = iopMemRead8_raw(mem);
+	if (LinkProbe::enabled && LinkProbe::IsWatched(mem & 0x1fffffff))
+		LinkProbe::IopAccess('R', mem & 0x1fffffff, 8, ret);
+	return ret;
+}
+
+u16 iopMemRead16(u32 mem)
+{
+	const u16 ret = iopMemRead16_raw(mem);
+	if (LinkProbe::enabled && LinkProbe::IsWatched(mem & 0x1fffffff))
+		LinkProbe::IopAccess('R', mem & 0x1fffffff, 16, ret);
+	return ret;
+}
+
+u32 iopMemRead32(u32 mem)
+{
+	const u32 ret = iopMemRead32_raw(mem);
+	if (LinkProbe::enabled && LinkProbe::IsWatched(mem & 0x1fffffff))
+		LinkProbe::IopAccess('R', mem & 0x1fffffff, 32, ret);
+	return ret;
+}
+
+void iopMemWrite8(u32 mem, u8 value)
+{
+	if (LinkProbe::enabled && LinkProbe::IsWatched(mem & 0x1fffffff))
+		LinkProbe::IopAccess('W', mem & 0x1fffffff, 8, value);
+	iopMemWrite8_raw(mem, value);
+}
+
+void iopMemWrite16(u32 mem, u16 value)
+{
+	if (LinkProbe::enabled && LinkProbe::IsWatched(mem & 0x1fffffff))
+		LinkProbe::IopAccess('W', mem & 0x1fffffff, 16, value);
+	iopMemWrite16_raw(mem, value);
+}
+
+void iopMemWrite32(u32 mem, u32 value)
+{
+	if (LinkProbe::enabled && LinkProbe::IsWatched(mem & 0x1fffffff))
+		LinkProbe::IopAccess('W', mem & 0x1fffffff, 32, value);
+	iopMemWrite32_raw(mem, value);
 }
 
 std::string iopMemReadString(u32 mem, int maxlen)

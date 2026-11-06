@@ -313,6 +313,8 @@ set(pcsx2DEV9Sources
 	DEV9/Sessions/UDP_Session/UDP_FixedPort.cpp
 	DEV9/Sessions/UDP_Session/UDP_Session.cpp
 	DEV9/smap.cpp
+	DEV9/LinkProbe.cpp
+	DEV9/vlan_io.cpp
 	DEV9/sockets.cpp
 	DEV9/DEV9.cpp
 	DEV9/flash.cpp
@@ -372,6 +374,8 @@ set(pcsx2DEV9Headers
 	DEV9/Sessions/UDP_Session/UDP_Session.h
 	DEV9/SimpleQueue.h
 	DEV9/smap.h
+	DEV9/LinkProbe.h
+	DEV9/vlan_io.h
 	DEV9/sockets.h
 	DEV9/ThreadSafeMap.h
 	)
