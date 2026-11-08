@@ -29,4 +29,7 @@ namespace ACSRAM
     int ReadFile();
     int WriteFile();
     void Clear(u8 fillerbyte = 0x0);
+    // Called once per vsync: writes the image ~1s after the game stops changing it,
+    // so test-menu settings survive a crash or a killed emulator, not only a clean shutdown.
+    void VSyncFlush();
 }

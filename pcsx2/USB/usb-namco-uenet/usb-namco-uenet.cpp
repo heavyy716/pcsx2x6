@@ -134,6 +134,11 @@ namespace usb_namco_uenet
 						static_cast<unsigned long long>(hit));
 				break;
 			}
+			case UeNetModel::Event::MacReset:
+				if (ShouldLog(s, 0xACull << 40, &hit))
+					LinkProbe::Note("UENET MAC reset (EthCtrl1 %02X, self-cleared) (hit %llu)", op.value,
+						static_cast<unsigned long long>(hit));
+				break;
 			case UeNetModel::Event::None:
 				break;
 		}

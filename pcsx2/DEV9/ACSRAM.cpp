@@ -11,6 +11,9 @@
 u8 ACSRAM::buffer[ACSRAM_MAX_SIZE];
 u8 compbuf[ACSRAM_MAX_SIZE] = {0};
 std::string ACSRAM::filepath = "";
+static bool s_dirty = false;
+static int s_quiet_vsyncs = 0;
+static int s_dirty_vsyncs = 0;
 bool LockSave = false; //why? because I dont wanna wipe an SRAM image that already existed but failed to be read
 
 
@@ -104,6 +107,22 @@ void ACSRAM::Write16(u32 addr, u16 val) {
     u32 T = GET_SRAM_OFF(addr);
     if (T < ACSRAM_MAX_SIZE) {
         ACSRAM_LOG("write16 [%04X]=%02X", T, val);
+        if (ACSRAM::buffer[T] != static_cast<u8>(val)) {
+            s_dirty = true;
+            s_quiet_vsyncs = 0;
+        }
         ACSRAM::buffer[T] = val;
     } else OOB_REPORT(T);
+}
+
+void ACSRAM::VSyncFlush() {
+    if (!s_dirty || ACSRAM::filepath.empty())
+        return;
+    // ~1s after the last change, or every ~10s while the game keeps writing.
+    if (++s_quiet_vsyncs < 60 && ++s_dirty_vsyncs < 600)
+        return;
+    s_dirty = false;
+    s_quiet_vsyncs = 0;
+    s_dirty_vsyncs = 0;
+    ACSRAM::WriteFile();
 }

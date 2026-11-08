@@ -3171,6 +3171,8 @@ void VMManager::Internal::VSyncOnCPUThread()
 
 	Patch::ApplyVsyncPatches();
 
+	ACSRAM::VSyncFlush();
+
 	// Frame advance must be done *before* pumping messages, because otherwise
 	// we'll immediately reduce the counter we just set.
 	if (s_frame_advance_count > 0)

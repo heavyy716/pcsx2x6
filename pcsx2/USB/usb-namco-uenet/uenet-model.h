@@ -28,6 +28,7 @@ namespace usb_namco_uenet
 	{
 	public:
 		static constexpr uint8_t REG_ETH_CTRL0 = 0x00;
+		static constexpr uint8_t REG_ETH_CTRL1 = 0x01;
 		static constexpr uint8_t REG_ETH_ID = 0x10;
 		static constexpr uint8_t REG_EPROM_OFFSET = 0x20;
 		static constexpr uint8_t REG_EPROM_DATA = 0x21;
@@ -42,6 +43,7 @@ namespace usb_namco_uenet
 		static constexpr uint8_t PHY_WRITE = 0x20;
 		static constexpr uint8_t PHY_READ = 0x40;
 		static constexpr uint8_t PHY_DONE = 0x80;
+		static constexpr uint8_t ETH_CTRL1_RESET_MAC = 0x08; // self-clearing; drivers poll until it reads 0
 
 		static constexpr int PHY_ADDRESS = 1;
 		static constexpr int MIN_FRAME = 60;
@@ -58,6 +60,7 @@ namespace usb_namco_uenet
 			EepromWrite,
 			PhyRead,
 			PhyWrite,
+			MacReset,
 		};
 		struct LastOp
 		{
@@ -138,7 +141,16 @@ namespace usb_namco_uenet
 		void WriteReg(int r, uint8_t v)
 		{
 			regs[r] = v;
-			if (r == REG_EPROM_CTRL)
+			if (r == REG_ETH_CTRL1 && (v & ETH_CTRL1_RESET_MAC))
+			{
+				// MAC reset completes instantly. Keep the MAC address, GPIO and filter
+				// registers the driver programmed; only drop in-flight TX state.
+				regs[REG_ETH_CTRL1] = static_cast<uint8_t>(v & ~ETH_CTRL1_RESET_MAC);
+				tx_buf.clear();
+				tx_pad_pending = false;
+				last = {Event::MacReset, 0, 0, v};
+			}
+			else if (r == REG_EPROM_CTRL)
 			{
 				const int off = regs[REG_EPROM_OFFSET] & 0x3F;
 				if (v & EPROM_READ)
