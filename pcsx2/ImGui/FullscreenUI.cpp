@@ -231,10 +231,22 @@ void FullscreenUI::ApplyLayoutSettings(const SettingsInterface* bsi)
 
 		if (bios_selection != "")
 		{
-			u32 bios_version, bios_region;
-			std::string bios_description, bios_zone;
-			if (IsBIOS(Path::Combine(EmuFolders::Bios, bios_selection).c_str(), bios_version, bios_description, bios_region, bios_zone))
+			// This runs on the GS thread whenever the reported gamepad layout flips (e.g. two pads of
+			// different types), so cache the parsed region instead of re-reading the BIOS file each time.
+			static std::string s_cached_bios_path;
+			static bool s_cached_bios_valid = false;
+			static u32 s_cached_bios_region = 0;
+			const std::string bios_path = Path::Combine(EmuFolders::Bios, bios_selection);
+			if (bios_path != s_cached_bios_path)
 			{
+				u32 bios_version;
+				std::string bios_description, bios_zone;
+				s_cached_bios_valid = IsBIOS(bios_path.c_str(), bios_version, bios_description, s_cached_bios_region, bios_zone);
+				s_cached_bios_path = bios_path;
+			}
+			if (s_cached_bios_valid)
+			{
+				const u32 bios_region = s_cached_bios_region;
 				// Japan, Asia, China
 				if (bios_region == 0 || bios_region == 4 || bios_region == 6)
 				{
