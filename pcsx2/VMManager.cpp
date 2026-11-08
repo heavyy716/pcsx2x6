@@ -1463,8 +1463,20 @@ bool VMManager::AutoDetectSource(const std::string& filename, Error* error)
 				// Attach the 2nd GunCon2 only for 2-player games, so 1-player cabinets show no extra crosshair.
 				const bool lightgun = (mode == JVS_MODE::LIGHTGUN);
 				const bool two_gun = lightgun && ACJV::GetGunMapping().p2_start != 0;
-				Host::SetBaseStringSettingValue("USB1", "Type", lightgun ? "guncon2" : "None");
-				Host::SetBaseStringSettingValue("USB2", "Type", two_gun ? "guncon2" : "None");
+				// Only manage GunCon2: attach it where needed and clear a stale one, but keep any other
+				// device the user configured (e.g. the namco_uenet cabinet-link adapter).
+				const auto set_gun_port = [](const char* section, bool want_gun) {
+					const std::string cur = Host::GetBaseStringSettingValue(section, "Type", "None");
+					if (want_gun && cur != "guncon2")
+						Host::SetBaseStringSettingValue(section, "Type", "guncon2");
+					else if (!want_gun && cur == "guncon2")
+						Host::SetBaseStringSettingValue(section, "Type", "None");
+				};
+				set_gun_port("USB1", lightgun);
+				set_gun_port("USB2", two_gun);
+				Console.WriteLnFmt(Color_Green, "ACGAME: USB1 Type={} USB2 Type={}",
+					Host::GetBaseStringSettingValue("USB1", "Type", "None"),
+					Host::GetBaseStringSettingValue("USB2", "Type", "None"));
 				ACJV::SetMode(mode);
 				Console.WriteLn(Color_Green, "ACGAME: jvsmode=%s -> JVS device mode %d%s",
 					jvsmode.empty() ? "(derived from gameid)" : jvsmode.c_str(),
