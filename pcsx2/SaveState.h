@@ -60,6 +60,12 @@ extern bool SaveState_ZipToDisk(
 extern bool SaveState_ReadScreenshot(const std::string& filename, u32* out_width, u32* out_height, std::vector<u32>* out_pixels);
 extern bool SaveState_UnzipFromDisk(const std::string& filename, Error* error);
 
+// Uncompressed in-memory save/load (rollback probe). The list's buffer is reused between calls, and
+// entry 0 is the internal structures followed by every savestate entry in order. Both must be called
+// on the CPU thread at a point where a hotkey state load would be allowed (e.g. the vsync hook).
+extern bool SaveState_SaveToMemory(ArchiveEntryList& list, u32* out_size, Error* error);
+extern bool SaveState_LoadFromMemory(const ArchiveEntryList& list, Error* error);
+
 // --------------------------------------------------------------------------------------
 //  SaveStateBase class
 // --------------------------------------------------------------------------------------
@@ -307,6 +313,11 @@ public:
 	const u8* GetPtr(uint idx) const
 	{
 		return &m_data[idx];
+	}
+
+	void ClearEntries()
+	{
+		m_list.clear();
 	}
 
 	ArchiveEntryList& Add(const ArchiveEntry& src)

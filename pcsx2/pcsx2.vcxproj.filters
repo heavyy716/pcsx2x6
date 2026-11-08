@@ -425,6 +425,9 @@
     <ClCompile Include="ShiftJisToUnicode.cpp">
       <Filter>Misc</Filter>
     </ClCompile>
+    <ClCompile Include="RollbackProbe.cpp">
+      <Filter>System</Filter>
+    </ClCompile>
     <ClCompile Include="SaveState.cpp">
       <Filter>System</Filter>
     </ClCompile>
@@ -1527,6 +1530,9 @@
       <Filter>System\Include</Filter>
     </ClInclude>
     <ClInclude Include="Config.h">
+      <Filter>System\Include</Filter>
+    </ClInclude>
+    <ClInclude Include="RollbackProbe.h">
       <Filter>System\Include</Filter>
     </ClInclude>
     <ClInclude Include="SaveState.h">

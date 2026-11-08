@@ -361,6 +361,12 @@ u16 ACJV::coin[2] = {0, 0};
 static u16 m_jvsSystemButtonState = 0;
 static u16 m_jvsButtonState[JVS_PLAYER_COUNT] = {};
 static u8 m_testButtonState = 0;
+
+// Rollback probe input override (see ACJV::SetInputOverride).
+static bool s_input_override = false;
+static ACJV::InputFrame s_override_frame = {};
+static u8 s_coins_since_capture[2] = {};
+static u16 s_deferred_coins[2] = {};
 static u16 m_jvsScreenPosX[JVS_PLAYER_COUNT] = {};
 static u16 m_jvsScreenPosY[JVS_PLAYER_COUNT] = {};
 static float m_jvsLightgunDX[JVS_PLAYER_COUNT] = {-1.0f, -1.0f};  // per-player normalized display X (-1 = off-screen)
@@ -545,10 +551,60 @@ void ACJV::SetMacroState(u32 player, u32 index, bool active)
 // Gamepad coin button -> increment JVS coin counter for P1 (slot 0) or P2 (slot 1)
 void ACJV::InsertCoin(u32 slot)
 {
-	if (slot == 0)
-		ACJV::coin[0]++;
-	else if (slot == 1)
-		ACJV::coin[1]++;
+	if (slot > 1)
+		return;
+	if (s_input_override)
+	{
+		s_deferred_coins[slot]++;
+		return;
+	}
+	ACJV::coin[slot]++;
+	if (s_coins_since_capture[slot] < 0xff)
+		s_coins_since_capture[slot]++;
+}
+
+static u16 EffectiveButtons(u32 player)
+{
+	if (s_input_override)
+		return s_override_frame.buttons[player];
+	return m_jvsButtonState[player] | m_jvsMacroButtonState[player];
+}
+
+static u8 EffectiveTest()
+{
+	if (s_input_override)
+		return s_override_frame.test;
+	return m_testButtonState | (s_dip_switch_state & TESTMODE);
+}
+
+void ACJV::CaptureInputFrame(InputFrame* out)
+{
+	out->buttons[0] = m_jvsButtonState[0] | m_jvsMacroButtonState[0];
+	out->buttons[1] = m_jvsButtonState[1] | m_jvsMacroButtonState[1];
+	out->test = m_testButtonState | (s_dip_switch_state & TESTMODE);
+	out->coins[0] = s_coins_since_capture[0];
+	out->coins[1] = s_coins_since_capture[1];
+	s_coins_since_capture[0] = 0;
+	s_coins_since_capture[1] = 0;
+}
+
+void ACJV::SetInputOverride(const InputFrame* frame)
+{
+	if (!frame)
+	{
+		s_input_override = false;
+		for (u32 i = 0; i < 2; i++)
+		{
+			ACJV::coin[i] += s_deferred_coins[i];
+			s_coins_since_capture[i] = static_cast<u8>(std::min<u32>(0xff, s_coins_since_capture[i] + s_deferred_coins[i]));
+			s_deferred_coins[i] = 0;
+		}
+		return;
+	}
+	s_input_override = true;
+	s_override_frame = *frame;
+	ACJV::coin[0] += frame->coins[0];
+	ACJV::coin[1] += frame->coins[1];
 }
 
 void ACJV::SetMode(JVS_MODE mode)
@@ -1036,10 +1092,10 @@ void do_jvs_packet(const u8* input, u8* output) {
 			inSize -= 2;
 
 			(*output++) = JVS_CMD_SUCCESS;
-			(*output++) = m_testButtonState|(s_dip_switch_state & TESTMODE);
+			(*output++) = EffectiveTest();
 			//(*output++) = (m_jvsSystemButtonState == 0x03) ? 0x80 : 0;  //Test
 
-			u16 p1btn = m_jvsButtonState[0] | m_jvsMacroButtonState[0];
+			u16 p1btn = EffectiveButtons(0);
 			if (s_lightgun_link_2p)
 				p1btn |= m_gunMapping->link_2p; // test menu reads it as LINK AS : 2 (RIGHT)
 			(*output++) = static_cast<u8>(p1btn);      //Player 1
@@ -1051,7 +1107,7 @@ void do_jvs_packet(const u8* input, u8* output) {
 
 			if(playerCount == 2)
 			{
-				const u16 p2btn = m_jvsButtonState[1] | m_jvsMacroButtonState[1];
+				const u16 p2btn = EffectiveButtons(1);
 				(*output++) = static_cast<u8>(p2btn);      //Player 2
 				(*output++) = static_cast<u8>(p2btn >> 8); //Player 2
 				(*dstSize) += 2;
@@ -1383,7 +1439,7 @@ void ACJV::UpdateFcaFrame()
 	rdbuf[0x85] = (u8)(brakeRaw >> 8);
 
 	// Buttons (FCA-1 digital inputs, active-high; bit assignments RE'd from I/O TEST FUN_0022bba8).
-	const u16 btn = m_jvsButtonState[0] | m_jvsMacroButtonState[0];
+	const u16 btn = EffectiveButtons(0);
 	u8 b40 = 0, b41 = 0;
 	if (btn & JVS_BTN_3)       b40 |= 0x80; // R1       -> UP SHIFT (gear up)
 	if (btn & JVS_BTN_4)       b40 |= 0x40; // L1       -> DOWN SHIFT (gear down)

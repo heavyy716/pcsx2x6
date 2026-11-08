@@ -165,6 +165,12 @@ namespace ACJV {
     float GetBrake(); // host brake, 0...1
     void InsertCoin(u32 slot);
 
+    // Rollback probe: snapshot of the live JVS inputs at a vsync, and an override that replaces them
+    // (buttons/test) while replaying recorded frames. coins = coin inserts since the previous capture.
+    struct InputFrame { u16 buttons[2]; u8 test; u8 coins[2]; };
+    void CaptureInputFrame(InputFrame* out);
+    void SetInputOverride(const InputFrame* frame); // nullptr = back to live input (deferred coins are applied)
+
     bool GetDIPSwitchState(u32 index);
     void SetDIPSwitchState(u32 index, bool enabled);
     void ToggleDIPSwitchState(u32 index);

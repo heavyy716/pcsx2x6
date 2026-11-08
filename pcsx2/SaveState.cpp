@@ -341,6 +341,9 @@ static const char* EntryFilename_Screenshot = "Screenshot.png";
 static const char* EntryFilename_InternalStructures = "PCSX2 Internal Structures.dat";
 static constexpr u32 STATE_PCSX2_VERSION_SIZE = 32;
 
+// Set while the rollback probe saves/loads in memory every frame, to keep the log quiet.
+static bool s_quiet_state = false;
+
 struct SysState_Component
 {
 	const char* name;
@@ -405,7 +408,8 @@ static bool SysState_ComponentFreezeOut(SaveStateBase& writer, SysState_Componen
 	const int size = fP.size;
 	writer.PrepBlock(size);
 
-	Console.WriteLn("  Saving %s", comp.name);
+	if (!s_quiet_state)
+		Console.WriteLn("  Saving %s", comp.name);
 
 	fP.data = writer.GetBlockPtr();
 	if (comp.freeze(FreezeAction::Save, &fP) != 0)
@@ -454,6 +458,27 @@ static bool SysState_ComponentFreezeOutNew(SaveStateBase& writer, const char* na
 	return true;
 }
 
+static bool SysState_ComponentFreezeInMem(const u8* data, u32 size, SysState_Component comp)
+{
+	freezeData fP = {0, nullptr};
+	if (comp.freeze(FreezeAction::Size, &fP) != 0)
+		fP.size = 0;
+	if (static_cast<u32>(fP.size) != size)
+	{
+		Console.Error(fmt::format("* {}: in-memory state size {} != expected {}", comp.name, size, fP.size));
+		return false;
+	}
+	fP.data = const_cast<u8*>(data);
+	return comp.freeze(FreezeAction::Load, &fP) == 0;
+}
+
+static bool SysState_ComponentFreezeInMemNew(const u8* data, u32 size, bool (*do_state_func)(StateWrapper&))
+{
+	StateWrapper::ReadOnlyMemoryStream stream(size ? data : nullptr, size);
+	StateWrapper sw(&stream, StateWrapper::Mode::Read, g_SaveVersion);
+	return do_state_func(sw);
+}
+
 // --------------------------------------------------------------------------------------
 //  BaseSavestateEntry
 // --------------------------------------------------------------------------------------
@@ -468,6 +493,7 @@ public:
 	virtual const char* GetFilename() const = 0;
 	virtual bool FreezeIn(zip_file_t* zf) const = 0;
 	virtual bool FreezeOut(SaveStateBase& writer) const = 0;
+	virtual bool FreezeInMem(const u8* data, u32 size) const = 0;
 	virtual bool IsRequired() const = 0;
 };
 
@@ -480,6 +506,11 @@ protected:
 public:
 	virtual bool FreezeIn(zip_file_t* zf) const;
 	virtual bool FreezeOut(SaveStateBase& writer) const;
+	bool FreezeInMem(const u8* data, u32 size) const override
+	{
+		std::memcpy(GetDataPtr(), data, std::min(size, static_cast<u32>(GetDataSize())));
+		return true;
+	}
 	virtual bool IsRequired() const { return true; }
 
 protected:
@@ -651,6 +682,7 @@ public:
 	const char* GetFilename() const override { return "SPU2.bin"; }
 	bool FreezeIn(zip_file_t* zf) const override { return SysState_ComponentFreezeIn(zf, SPU2_); }
 	bool FreezeOut(SaveStateBase& writer) const override { return SysState_ComponentFreezeOut(writer, SPU2_); }
+	bool FreezeInMem(const u8* data, u32 size) const override { return SysState_ComponentFreezeInMem(data, size, SPU2_); }
 	bool IsRequired() const override { return true; }
 };
 
@@ -662,6 +694,7 @@ public:
 	const char* GetFilename() const override { return "USB.bin"; }
 	bool FreezeIn(zip_file_t* zf) const override { return SysState_ComponentFreezeInNew(zf, "USB", &USB::DoState); }
 	bool FreezeOut(SaveStateBase& writer) const override { return SysState_ComponentFreezeOutNew(writer, "USB", 16 * 1024, &USB::DoState); }
+	bool FreezeInMem(const u8* data, u32 size) const override { return SysState_ComponentFreezeInMemNew(data, size, &USB::DoState); }
 	bool IsRequired() const override { return false; }
 };
 
@@ -673,6 +706,7 @@ public:
 	const char* GetFilename() const override { return "PAD.bin"; }
 	bool FreezeIn(zip_file_t* zf) const override { return SysState_ComponentFreezeInNew(zf, "PAD", &Pad::Freeze); }
 	bool FreezeOut(SaveStateBase& writer) const override { return SysState_ComponentFreezeOutNew(writer, "PAD", 16 * 1024, &Pad::Freeze); }
+	bool FreezeInMem(const u8* data, u32 size) const override { return SysState_ComponentFreezeInMemNew(data, size, &Pad::Freeze); }
 	bool IsRequired() const override { return true; }
 };
 
@@ -684,6 +718,7 @@ public:
 	const char* GetFilename() const { return "GS.bin"; }
 	bool FreezeIn(zip_file_t* zf) const { return SysState_ComponentFreezeIn(zf, GS); }
 	bool FreezeOut(SaveStateBase& writer) const { return SysState_ComponentFreezeOut(writer, GS); }
+	bool FreezeInMem(const u8* data, u32 size) const override { return SysState_ComponentFreezeInMem(data, size, GS); }
 	bool IsRequired() const { return true; }
 };
 
@@ -716,6 +751,13 @@ class SaveStateEntry_Achievements final : public BaseSavestateEntry
 
 		Achievements::SaveState(writer);
 		return writer.IsOkay();
+	}
+
+	bool FreezeInMem(const u8* data, u32 size) const override
+	{
+		if (Achievements::IsActive())
+			Achievements::LoadState(std::span<const u8>(data, size));
+		return true;
 	}
 
 	bool IsRequired() const override { return false; }
@@ -789,6 +831,82 @@ std::unique_ptr<ArchiveEntryList> SaveState_DownloadState(Error* error)
 	}
 
 	return destlist;
+}
+
+bool SaveState_SaveToMemory(ArchiveEntryList& list, u32* out_size, Error* error)
+{
+	// Keep the buffer allocated between calls: no 64 MB zero-fill per save.
+	std::vector<u8>& buf = list.GetBuffer();
+	if (buf.size() < 1024 * 1024 * 64)
+		buf.resize(1024 * 1024 * 64);
+	list.ClearEntries();
+
+	s_quiet_state = true;
+	ScopedGuard quiet_guard([]() { s_quiet_state = false; });
+
+	memSavingState saveme(buf);
+	ArchiveEntry internals(EntryFilename_InternalStructures);
+	internals.SetDataIndex(saveme.GetCurrentPos());
+	if (!saveme.FreezeBios() || !saveme.FreezeInternals(error))
+	{
+		if (!error->IsValid())
+			Error::SetString(error, "FreezeInternals() failed");
+		return false;
+	}
+	internals.SetDataSize(saveme.GetCurrentPos() - internals.GetDataIndex());
+	list.Add(internals);
+
+	for (const std::unique_ptr<BaseSavestateEntry>& entry : SavestateEntries)
+	{
+		const uint startpos = saveme.GetCurrentPos();
+		if (!entry->FreezeOut(saveme))
+		{
+			Error::SetString(error, fmt::format("FreezeOut() failed for {}.", entry->GetFilename()));
+			return false;
+		}
+		list.Add(ArchiveEntry(entry->GetFilename()).SetDataIndex(startpos).SetDataSize(saveme.GetCurrentPos() - startpos));
+	}
+
+	if (out_size)
+		*out_size = saveme.GetCurrentPos();
+	return true;
+}
+
+bool SaveState_LoadFromMemory(const ArchiveEntryList& list, Error* error)
+{
+	if (list.GetLength() != std::size(SavestateEntries) + 1)
+	{
+		Error::SetString(error, "In-memory state has the wrong number of entries.");
+		return false;
+	}
+
+	s_quiet_state = true;
+	ScopedGuard quiet_guard([]() { s_quiet_state = false; });
+
+	PreLoadPrep();
+
+	memLoadingState state(list.GetBuffer());
+	if (!state.FreezeBios() || !state.FreezeInternals(error))
+	{
+		if (!error->IsValid())
+			Error::SetString(error, "In-memory state: internal structures failed to load.");
+		VMManager::Reset();
+		return false;
+	}
+
+	for (u32 i = 0; i < std::size(SavestateEntries); i++)
+	{
+		const ArchiveEntry& e = list[i + 1];
+		if (!SavestateEntries[i]->FreezeInMem(list.GetPtr(static_cast<uint>(e.GetDataIndex())), e.GetDataSize()))
+		{
+			Error::SetString(error, fmt::format("In-memory state: {} failed to load.", SavestateEntries[i]->GetFilename()));
+			VMManager::Reset();
+			return false;
+		}
+	}
+
+	PostLoadPrep();
+	return true;
 }
 
 std::unique_ptr<SaveStateScreenshotData> SaveState_SaveScreenshot()

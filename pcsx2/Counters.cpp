@@ -19,6 +19,7 @@
 #include "SIO/Sio.h"
 #include "SPU2/spu2.h"
 #include "Recording/InputRecording.h"
+#include "RollbackProbe.h"
 #include "VMManager.h"
 #include "VUmicro.h"
 
@@ -493,13 +494,17 @@ static __fi void VSyncStart(u64 sCycle)
 	VMManager::Internal::VSyncOnCPUThread();
 
 	// Don't bother throttling if we're going to pause.
-	if (!VMManager::Internal::IsExecutionInterrupted())
+	RollbackProbe::BeforeThrottle();
+	if (!VMManager::Internal::IsExecutionInterrupted() && !RollbackProbe::SkipThrottle())
 		VMManager::Internal::Throttle();
 
 	gsPostVsyncStart(); // MUST be after framelimit; doing so before causes funk with frame times!
 
 	// Poll input after MTGS frame push, just in case it has to stall to catch up.
 	VMManager::Internal::PollInputOnCPUThread();
+
+	// Rollback feasibility probe: in-memory save/load and replay happen here, right after input polling.
+	RollbackProbe::OnVSync();
 
 	EECNT_LOG("    ================  EE COUNTER VSYNC START (frame: %d)  ================", g_FrameCount);
 
