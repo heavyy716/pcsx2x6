@@ -39,6 +39,9 @@
 #include <WinSock2.h>
 #include <ws2tcpip.h>
 #include <mstcpip.h>
+#ifndef SIO_UDP_CONNRESET
+#define SIO_UDP_CONNRESET _WSAIOW(IOC_VENDOR, 12)
+#endif
 using socket_t = SOCKET;
 static constexpr socket_t INVALID_SOCK = INVALID_SOCKET;
 #else

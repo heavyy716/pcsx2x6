@@ -134,6 +134,14 @@ jobs:
           BUILD_FFMPEG: 1
         run: .github/workflows/scripts/windows/build-dependencies.bat
 
+      # Save right away so a later compile failure doesn't throw away the dependency build.
+      - name: Save Dependencies Cache
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: deps
+          key: ${{ steps.cache-deps.outputs.cache-primary-key }}
+
       - name: Generate CMake
         if: inputs.configuration == 'CMake'
         id: cmake
