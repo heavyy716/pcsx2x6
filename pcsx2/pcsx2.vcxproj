@@ -212,6 +212,7 @@
     <ClCompile Include="DEV9\smap.cpp" />
     <ClCompile Include="DEV9\LinkProbe.cpp" />
     <ClCompile Include="DEV9\vlan_io.cpp" />
+    <ClCompile Include="DEV9\vlan_link.cpp" />
     <ClCompile Include="DEV9\sockets.cpp" />
     <ClCompile Include="DEV9\net.cpp" />
     <ClCompile Include="DEV9\Win32\tap-win32.cpp" />
@@ -426,6 +427,7 @@
     <ClCompile Include="USB\usb-pad\usb-trance-vibrator.cpp" />
     <ClCompile Include="USB\usb-pad\usb-turntable.cpp" />
     <ClCompile Include="USB\usb-printer\usb-printer.cpp" />
+    <ClCompile Include="USB\usb-namco-uenet\usb-namco-uenet.cpp" />
     <ClCompile Include="USB\USB.cpp" />
     <ClCompile Include="VMManager.cpp" />
     <ClCompile Include="windows\Optimus.cpp" />
@@ -663,6 +665,7 @@
     <ClInclude Include="DEV9\smap.h" />
     <ClInclude Include="DEV9\LinkProbe.h" />
     <ClInclude Include="DEV9\vlan_io.h" />
+    <ClInclude Include="DEV9\vlan_link.h" />
     <ClInclude Include="DEV9\sockets.h" />
     <ClInclude Include="DEV9\ThreadSafeMap.h" />
     <ClInclude Include="DEV9\Win32\pcap_io_win32_funcs.h" />
@@ -888,6 +891,8 @@
     <ClInclude Include="USB\usb-pad\usb-trance-vibrator.h" />
     <ClInclude Include="USB\usb-pad\usb-turntable.h" />
     <ClInclude Include="USB\usb-printer\usb-printer.h" />
+    <ClInclude Include="USB\usb-namco-uenet\usb-namco-uenet.h" />
+    <ClInclude Include="USB\usb-namco-uenet\uenet-model.h" />
     <ClInclude Include="USB\USB.h" />
     <ClInclude Include="Utilities\AsciiFile.h" />
     <ClInclude Include="Elfheader.h" />

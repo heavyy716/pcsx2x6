@@ -4,16 +4,7 @@
 #pragma once
 
 #include "net.h"
-
-#include <chrono>
-#include <string>
-
-#ifdef _WIN32
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#else
-#include <netinet/in.h>
-#endif
+#include "vlan_link.h"
 
 // UDP "virtual cable" network backend (vs-rollback harness).
 //
@@ -23,8 +14,9 @@
 // handed to the SMAP as a frame. A switch process (vs-rollback scripts/vlan_switch.py)
 // relays frames between instances, so two emulators share one private layer-2 LAN.
 //
-// PCSX2X6_VLAN_MAC=aa:bb:cc:dd:ee:ff sets the SMAP MAC (written into the DEV9 EEPROM),
-// so instances on the same LAN don't collide. No internal DHCP/DNS server is used.
+// The SMAP MAC (written into the DEV9 EEPROM) comes from PCSX2X6_SMAP_MAC, or else
+// PCSX2X6_VLAN_MAC, so instances on the same LAN don't collide. No internal DHCP/DNS
+// server is used.
 class VlanAdapter : public NetAdapter
 {
 public:
@@ -41,16 +33,7 @@ public:
 	void close() override;
 
 private:
-	void SendHello();
-
-#ifdef _WIN32
-	using socket_t = SOCKET;
-#else
-	using socket_t = int;
-#endif
-	socket_t sock;
-	sockaddr_in peer{};
+	VlanLink link;
 	bool initialised = false;
-	std::chrono::steady_clock::time_point lastHello{};
 	bool notedForeignDst = false;
 };

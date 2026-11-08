@@ -315,6 +315,7 @@ set(pcsx2DEV9Sources
 	DEV9/smap.cpp
 	DEV9/LinkProbe.cpp
 	DEV9/vlan_io.cpp
+	DEV9/vlan_link.cpp
 	DEV9/sockets.cpp
 	DEV9/DEV9.cpp
 	DEV9/flash.cpp
@@ -376,6 +377,7 @@ set(pcsx2DEV9Headers
 	DEV9/smap.h
 	DEV9/LinkProbe.h
 	DEV9/vlan_io.h
+	DEV9/vlan_link.h
 	DEV9/sockets.h
 	DEV9/ThreadSafeMap.h
 	)
@@ -412,6 +414,7 @@ set(pcsx2USBSources
 	USB/usb-pad/usb-trance-vibrator.cpp
 	USB/usb-pad/usb-turntable.cpp
 	USB/usb-printer/usb-printer.cpp
+	USB/usb-namco-uenet/usb-namco-uenet.cpp
 )
 
 # USB headers
@@ -448,6 +451,8 @@ set(pcsx2USBHeaders
 	USB/usb-pad/usb-train.h
 	USB/usb-pad/usb-trance-vibrator.h
 	USB/usb-printer/usb-printer.h
+	USB/usb-namco-uenet/usb-namco-uenet.h
+	USB/usb-namco-uenet/uenet-model.h
 )
 
 # Host PAD

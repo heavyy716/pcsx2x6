@@ -244,6 +244,9 @@
     <Filter Include="System\Ps2\USB\usb-printer">
       <UniqueIdentifier>{001fa220-df32-4da7-ba7e-2a7eca5cdb78}</UniqueIdentifier>
     </Filter>
+    <Filter Include="System\Ps2\USB\usb-namco-uenet">
+      <UniqueIdentifier>{6b1f2c3e-8a54-4d0e-9c47-2460e5a0b9a5}</UniqueIdentifier>
+    </Filter>
     <Filter Include="System\Ps2\USB\usb-msd">
       <UniqueIdentifier>{20789ef3-7c0e-41ac-babd-03a9be9fe994}</UniqueIdentifier>
     </Filter>
@@ -995,6 +998,9 @@
     <ClCompile Include="DEV9\vlan_io.cpp">
       <Filter>System\Ps2\DEV9</Filter>
     </ClCompile>
+    <ClCompile Include="DEV9\vlan_link.cpp">
+      <Filter>System\Ps2\DEV9</Filter>
+    </ClCompile>
     <ClCompile Include="DEV9\sockets.cpp">
       <Filter>System\Ps2\DEV9</Filter>
     </ClCompile>
@@ -1207,6 +1213,9 @@
     </ClCompile>
     <ClCompile Include="USB\usb-printer\usb-printer.cpp">
       <Filter>System\Ps2\USB\usb-printer</Filter>
+    </ClCompile>
+    <ClCompile Include="USB\usb-namco-uenet\usb-namco-uenet.cpp">
+      <Filter>System\Ps2\USB\usb-namco-uenet</Filter>
     </ClCompile>
     <ClCompile Include="USB\usb-msd\usb-msd.cpp">
       <Filter>System\Ps2\USB\usb-msd</Filter>
@@ -1922,6 +1931,9 @@
     <ClInclude Include="DEV9\vlan_io.h">
       <Filter>System\Ps2\DEV9</Filter>
     </ClInclude>
+    <ClInclude Include="DEV9\vlan_link.h">
+      <Filter>System\Ps2\DEV9</Filter>
+    </ClInclude>
     <ClInclude Include="DEV9\sockets.h">
       <Filter>System\Ps2\DEV9</Filter>
     </ClInclude>
@@ -2186,6 +2198,12 @@
     </ClInclude>
     <ClInclude Include="USB\usb-printer\usb-printer.h">
       <Filter>System\Ps2\USB\usb-printer</Filter>
+    </ClInclude>
+    <ClInclude Include="USB\usb-namco-uenet\usb-namco-uenet.h">
+      <Filter>System\Ps2\USB\usb-namco-uenet</Filter>
+    </ClInclude>
+    <ClInclude Include="USB\usb-namco-uenet\uenet-model.h">
+      <Filter>System\Ps2\USB\usb-namco-uenet</Filter>
     </ClInclude>
     <ClInclude Include="USB\usb-msd\usb-msd.h">
       <Filter>System\Ps2\USB\usb-msd</Filter>
