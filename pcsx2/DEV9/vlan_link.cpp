@@ -165,6 +165,11 @@ bool VlanLink::Open(const std::string& target_, const u8 mac_[6], const char* ta
 #endif
 
 	SendHello();
+	{
+		std::lock_guard<std::mutex> lk(helloMutex);
+		keepaliveStop = false;
+	}
+	keepalive = std::thread(&VlanLink::KeepaliveLoop, this);
 	Console.WriteLn(Color_StrongGreen, "VLAN(%s): %02x:%02x:%02x:%02x:%02x:%02x on UDP virtual LAN %s", tag,
 		mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], target.c_str());
 	LinkProbe::Note("VLAN up (%s): switch=%s mac=%02x:%02x:%02x:%02x:%02x:%02x", tag, target.c_str(),
@@ -174,6 +179,7 @@ bool VlanLink::Open(const std::string& target_, const u8 mac_[6], const char* ta
 
 void VlanLink::Close()
 {
+	StopKeepalive();
 	if (sock != kInvalid)
 	{
 #ifdef _WIN32
@@ -194,11 +200,18 @@ void VlanLink::Close()
 
 void VlanLink::SetMac(const u8 mac_[6])
 {
+	std::lock_guard<std::mutex> lk(helloMutex);
 	std::memcpy(mac, mac_, 6);
-	SendHello();
+	SendHelloLocked();
 }
 
 void VlanLink::SendHello()
+{
+	std::lock_guard<std::mutex> lk(helloMutex);
+	SendHelloLocked();
+}
+
+void VlanLink::SendHelloLocked()
 {
 	if (sock == kInvalid)
 		return;
@@ -209,13 +222,40 @@ void VlanLink::SendHello()
 	lastHello = std::chrono::steady_clock::now();
 }
 
+void VlanLink::KeepaliveLoop()
+{
+	std::unique_lock<std::mutex> lk(helloMutex);
+	while (!keepaliveStop)
+	{
+		if (std::chrono::steady_clock::now() - lastHello >= std::chrono::seconds(1))
+			SendHelloLocked();
+		keepaliveCv.wait_for(lk, std::chrono::seconds(1), [this] { return keepaliveStop; });
+	}
+}
+
+void VlanLink::StopKeepalive()
+{
+	{
+		std::lock_guard<std::mutex> lk(helloMutex);
+		keepaliveStop = true;
+	}
+	keepaliveCv.notify_all();
+	if (keepalive.joinable())
+		keepalive.join();
+}
+
 int VlanLink::Recv(u8* buf, int cap)
 {
 	if (sock == kInvalid)
 		return 0;
 
 	// Keep the switch's port table fresh (and survive a switch restart).
-	if (std::chrono::steady_clock::now() - lastHello > std::chrono::seconds(1))
+	bool due;
+	{
+		std::lock_guard<std::mutex> lk(helloMutex);
+		due = std::chrono::steady_clock::now() - lastHello > std::chrono::seconds(1);
+	}
+	if (due)
 		SendHello();
 
 	for (;;)
