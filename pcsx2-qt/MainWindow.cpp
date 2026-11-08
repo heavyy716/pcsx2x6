@@ -34,6 +34,7 @@
 #include "pcsx2/GameList.h"
 #include "pcsx2/Host.h"
 #include "pcsx2/ImGui/FullscreenUI.h"
+#include "pcsx2/InputSync.h"
 #include "pcsx2/MTGS.h"
 #include "pcsx2/PerformanceMetrics.h"
 #include "pcsx2/Recording/InputRecording.h"
@@ -51,11 +52,20 @@
 
 #include <QtCore/QDateTime>
 #include <QtCore/QDir>
+#include <QtCore/QFileInfo>
 #include <QtGui/QCloseEvent>
+#include <QtWidgets/QComboBox>
+#include <QtWidgets/QDialog>
+#include <QtWidgets/QDialogButtonBox>
 #include <QtWidgets/QFileDialog>
+#include <QtWidgets/QFormLayout>
+#include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QInputDialog>
+#include <QtWidgets/QLineEdit>
 #include <QtWidgets/QMessageBox>
 #include <QtWidgets/QProgressBar>
+#include <QtWidgets/QPushButton>
+#include <QtWidgets/QSpinBox>
 #include <QtWidgets/QStyle>
 #include <QtWidgets/QStyleFactory>
 
@@ -364,6 +374,11 @@ void MainWindow::connectSignals()
 	connect(m_ui.actionAbout, &QAction::triggered, this, &MainWindow::onAboutActionTriggered);
 	connect(m_ui.actionCheckForUpdates, &QAction::triggered, this, [this]() { checkForUpdates(true, true); });
 	connect(m_ui.actionOpenDataDirectory, &QAction::triggered, this, &MainWindow::onToolsOpenDataDirectoryTriggered);
+	{
+		QAction* netplay_action = new QAction(tr("&Netplay (Arcade)..."), this);
+		m_ui.menuTools->insertAction(m_ui.actionOpenDataDirectory, netplay_action);
+		connect(netplay_action, &QAction::triggered, this, &MainWindow::onToolsNetplayTriggered);
+	}
 	connect(m_ui.actionCoverDownloader, &QAction::triggered, this, &MainWindow::onToolsCoverDownloaderTriggered);
 	connect(m_ui.actionGridViewShowTitles, &QAction::triggered, m_game_list_widget, &GameListWidget::setShowCoverTitles);
 	connect(m_ui.actionGridViewZoomIn, &QAction::triggered, m_game_list_widget, [this]() {
@@ -457,6 +472,17 @@ void MainWindow::connectVMThreadSignals(EmuThread* thread)
 	connect(thread, &EmuThread::onVMPaused, this, &MainWindow::onVMPaused);
 	connect(thread, &EmuThread::onVMResumed, this, &MainWindow::onVMResumed);
 	connect(thread, &EmuThread::onVMStopped, this, &MainWindow::onVMStopped);
+	const auto close_netplay_wait = [this]() {
+		if (m_netplay_wait_dialog)
+		{
+			QObject::disconnect(m_netplay_wait_dialog, nullptr, this, nullptr);
+			m_netplay_wait_dialog->close();
+			m_netplay_wait_dialog->deleteLater();
+			m_netplay_wait_dialog = nullptr;
+		}
+	};
+	connect(thread, &EmuThread::onVMStarted, this, close_netplay_wait);
+	connect(thread, &EmuThread::onVMStopped, this, close_netplay_wait);
 	connect(thread, &EmuThread::onGameChanged, this, &MainWindow::onGameChanged);
 	connect(thread, &EmuThread::onCaptureStarted, this, &MainWindow::onCaptureStarted);
 	connect(thread, &EmuThread::onCaptureStopped, this, &MainWindow::onCaptureStopped);
@@ -1910,6 +1936,136 @@ void MainWindow::onToolsOpenDataDirectoryTriggered()
 {
 	const QString path(QString::fromStdString(EmuFolders::DataRoot));
 	QtUtils::OpenURL(this, QUrl::fromLocalFile(path));
+}
+
+void MainWindow::onToolsNetplayTriggered()
+{
+	if (s_vm_valid)
+	{
+		QMessageBox::information(this, tr("Netplay"), tr("Please stop the running game first, then start netplay from here."));
+		return;
+	}
+
+	QDialog dlg(this);
+	dlg.setWindowTitle(tr("Netplay (Arcade)"));
+	QFormLayout* layout = new QFormLayout(&dlg);
+
+	QLabel* intro = new QLabel(tr("Both players need the same game files and the same emulator build. "
+								  "The host shares their UDP port (default 7656) on their router; the other player joins with the host's address."),
+		&dlg);
+	intro->setWordWrap(true);
+	layout->addRow(intro);
+
+	QComboBox* role = new QComboBox(&dlg);
+	role->addItem(tr("Host a game (I share my address)"));
+	role->addItem(tr("Join a game (I type the host's address)"));
+	role->setCurrentIndex(Host::GetBaseStringSettingValue("Netplay", "Role", "Host") == "Join" ? 1 : 0);
+	layout->addRow(tr("I want to:"), role);
+
+	QLineEdit* address = new QLineEdit(QString::fromStdString(Host::GetBaseStringSettingValue("Netplay", "Address", "")), &dlg);
+	address->setPlaceholderText(tr("e.g. 203.0.113.5 or 203.0.113.5:7656"));
+	layout->addRow(tr("Host address:"), address);
+
+	QSpinBox* port = new QSpinBox(&dlg);
+	port->setRange(1, 65535);
+	port->setValue(static_cast<int>(Host::GetBaseUIntSettingValue("Netplay", "Port", 7656)));
+	layout->addRow(tr("Port (host):"), port);
+
+	QComboBox* side = new QComboBox(&dlg);
+	side->addItem(tr("Player 1"));
+	side->addItem(tr("Player 2"));
+	side->setCurrentIndex(Host::GetBaseUIntSettingValue("Netplay", "Side", 1) == 2 ? 1 : 0);
+	layout->addRow(tr("Host plays as:"), side);
+
+	QSpinBox* delay = new QSpinBox(&dlg);
+	delay->setRange(0, 30);
+	delay->setValue(static_cast<int>(Host::GetBaseUIntSettingValue("Netplay", "Delay", 3)));
+	delay->setToolTip(tr("Frames of input delay. Raise it if the game stutters, lower it if controls feel slow."));
+	layout->addRow(tr("Input delay (host):"), delay);
+
+	QString game_path = QString::fromStdString(Host::GetBaseStringSettingValue("Netplay", "GamePath", ""));
+	if (const std::optional<GameList::Entry> entry = m_game_list_widget->getSelectedEntry(); entry.has_value())
+		game_path = QString::fromStdString(entry->path);
+	QWidget* game_row = new QWidget(&dlg);
+	QHBoxLayout* game_layout = new QHBoxLayout(game_row);
+	game_layout->setContentsMargins(0, 0, 0, 0);
+	QLineEdit* game = new QLineEdit(game_path, game_row);
+	QPushButton* browse = new QPushButton(tr("Browse..."), game_row);
+	game_layout->addWidget(game, 1);
+	game_layout->addWidget(browse);
+	layout->addRow(tr("Game (.acgame):"), game_row);
+	connect(browse, &QPushButton::clicked, &dlg, [&dlg, game]() {
+		const QString path = QDir::toNativeSeparators(QFileDialog::getOpenFileName(&dlg, tr("Select Arcade Game"), game->text(),
+			tr("Arcade Games (*.acgame);;All Files (*.*)")));
+		if (!path.isEmpty())
+			game->setText(path);
+	});
+
+	const auto update_fields = [role, address, port, side, delay]() {
+		const bool host = (role->currentIndex() == 0);
+		address->setEnabled(!host);
+		port->setEnabled(host);
+		side->setEnabled(host);
+		delay->setEnabled(host);
+	};
+	connect(role, &QComboBox::currentIndexChanged, &dlg, update_fields);
+	update_fields();
+
+	QDialogButtonBox* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+	buttons->button(QDialogButtonBox::Ok)->setText(tr("Start"));
+	connect(buttons, &QDialogButtonBox::accepted, &dlg, [&dlg, role, address, game]() {
+		if (game->text().trimmed().isEmpty() || !QFileInfo::exists(game->text().trimmed()))
+		{
+			QMessageBox::warning(&dlg, tr("Netplay"), tr("Please choose the game's .acgame file."));
+			return;
+		}
+		if (role->currentIndex() == 1 && address->text().trimmed().isEmpty())
+		{
+			QMessageBox::warning(&dlg, tr("Netplay"), tr("Please type the host's address."));
+			return;
+		}
+		dlg.accept();
+	});
+	connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+	layout->addRow(buttons);
+
+	if (dlg.exec() != QDialog::Accepted || s_vm_valid)
+		return;
+
+	const bool host = (role->currentIndex() == 0);
+	const QString path = game->text().trimmed();
+	Host::SetBaseStringSettingValue("Netplay", "Role", host ? "Host" : "Join");
+	Host::SetBaseStringSettingValue("Netplay", "Address", address->text().trimmed().toUtf8().constData());
+	Host::SetBaseUIntSettingValue("Netplay", "Port", static_cast<uint>(port->value()));
+	Host::SetBaseUIntSettingValue("Netplay", "Side", static_cast<uint>(side->currentIndex() + 1));
+	Host::SetBaseUIntSettingValue("Netplay", "Delay", static_cast<uint>(delay->value()));
+	Host::SetBaseStringSettingValue("Netplay", "GamePath", path.toUtf8().constData());
+	Host::CommitBaseSettingChanges();
+
+	InputSync::Options opts;
+	opts.mode = host ? InputSync::Mode::Host : InputSync::Mode::Join;
+	opts.address = address->text().trimmed().toStdString();
+	opts.port = static_cast<u16>(port->value());
+	opts.side = static_cast<u32>(side->currentIndex());
+	opts.delay = static_cast<u32>(delay->value());
+	InputSync::SetPendingOptions(opts);
+
+	QMessageBox* wait = new QMessageBox(QMessageBox::Information, tr("Netplay"),
+		host ? tr("Waiting for the other player to join on port %1...\n\nTell them your public IP address.").arg(port->value()) :
+			   tr("Connecting to %1...").arg(address->text().trimmed()),
+		QMessageBox::Cancel, this);
+	wait->setAttribute(Qt::WA_DeleteOnClose, false);
+	connect(wait, &QMessageBox::rejected, this, []() { InputSync::CancelConnect(); });
+	wait->setModal(false);
+	wait->show();
+	m_netplay_wait_dialog = wait;
+
+	VMManager::WaitForSaveStateFlush();
+	cancelGameListRefresh();
+
+	std::shared_ptr<VMBootParameters> params = std::make_shared<VMBootParameters>();
+	params->filename = path.toStdString();
+	g_emu_thread->startVM(std::move(params));
 }
 
 void MainWindow::onToolsCoverDownloaderTriggered()

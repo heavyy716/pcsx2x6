@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cstring>
 #include <string>
 
 enum ACJVCMD {
@@ -361,6 +362,9 @@ u16 ACJV::coin[2] = {0, 0};
 static u16 m_jvsSystemButtonState = 0;
 static u16 m_jvsButtonState[JVS_PLAYER_COUNT] = {};
 static u8 m_testButtonState = 0;
+static bool s_input_sync = false;
+static ACJV::SyncFrame s_latched_input = {};
+static u8 s_pending_coins[JVS_PLAYER_COUNT] = {};
 static u16 m_jvsScreenPosX[JVS_PLAYER_COUNT] = {};
 static u16 m_jvsScreenPosY[JVS_PLAYER_COUNT] = {};
 static float m_jvsLightgunDX[JVS_PLAYER_COUNT] = {-1.0f, -1.0f};  // per-player normalized display X (-1 = off-screen)
@@ -545,10 +549,45 @@ void ACJV::SetMacroState(u32 player, u32 index, bool active)
 // Gamepad coin button -> increment JVS coin counter for P1 (slot 0) or P2 (slot 1)
 void ACJV::InsertCoin(u32 slot)
 {
-	if (slot == 0)
-		ACJV::coin[0]++;
-	else if (slot == 1)
-		ACJV::coin[1]++;
+	if (slot >= JVS_PLAYER_COUNT)
+		return;
+	if (s_input_sync)
+	{
+		if (s_pending_coins[slot] < 0xFF)
+			s_pending_coins[slot]++;
+		return;
+	}
+	ACJV::coin[slot]++;
+}
+
+void ACJV::SetInputSyncEnabled(bool enabled)
+{
+	s_input_sync = enabled;
+	s_latched_input = {};
+	std::memset(s_pending_coins, 0, sizeof(s_pending_coins));
+}
+
+void ACJV::CaptureLiveInput(SyncFrame* out)
+{
+	for (u32 p = 0; p < JVS_PLAYER_COUNT; p++)
+	{
+		out->buttons[p] = m_jvsButtonState[p] | m_jvsMacroButtonState[p];
+		out->coins[p] = s_pending_coins[p];
+		s_pending_coins[p] = 0;
+	}
+	out->test = static_cast<u8>(m_testButtonState | (s_dip_switch_state & TESTMODE));
+}
+
+void ACJV::LatchInput(const SyncFrame& in)
+{
+	s_latched_input = in;
+	for (u32 p = 0; p < JVS_PLAYER_COUNT; p++)
+		ACJV::coin[p] += in.coins[p];
+}
+
+u16 ACJV::GetDIPSwitchBits()
+{
+	return s_dip_switch_state;
 }
 
 void ACJV::SetMode(JVS_MODE mode)
@@ -1036,10 +1075,10 @@ void do_jvs_packet(const u8* input, u8* output) {
 			inSize -= 2;
 
 			(*output++) = JVS_CMD_SUCCESS;
-			(*output++) = m_testButtonState|(s_dip_switch_state & TESTMODE);
+			(*output++) = s_input_sync ? s_latched_input.test : (m_testButtonState|(s_dip_switch_state & TESTMODE));
 			//(*output++) = (m_jvsSystemButtonState == 0x03) ? 0x80 : 0;  //Test
 
-			u16 p1btn = m_jvsButtonState[0] | m_jvsMacroButtonState[0];
+			u16 p1btn = s_input_sync ? s_latched_input.buttons[0] : (m_jvsButtonState[0] | m_jvsMacroButtonState[0]);
 			if (s_lightgun_link_2p)
 				p1btn |= m_gunMapping->link_2p; // test menu reads it as LINK AS : 2 (RIGHT)
 			(*output++) = static_cast<u8>(p1btn);      //Player 1
@@ -1051,7 +1090,7 @@ void do_jvs_packet(const u8* input, u8* output) {
 
 			if(playerCount == 2)
 			{
-				const u16 p2btn = m_jvsButtonState[1] | m_jvsMacroButtonState[1];
+				const u16 p2btn = s_input_sync ? s_latched_input.buttons[1] : (m_jvsButtonState[1] | m_jvsMacroButtonState[1]);
 				(*output++) = static_cast<u8>(p2btn);      //Player 2
 				(*output++) = static_cast<u8>(p2btn >> 8); //Player 2
 				(*dstSize) += 2;

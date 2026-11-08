@@ -531,6 +531,8 @@
     <ClCompile Include="COP0.cpp" />
     <ClCompile Include="COP2.cpp" />
     <ClCompile Include="FPU.cpp" />
+    <ClCompile Include="InputSync.cpp" />
+    <ClCompile Include="InputSyncProtocol.cpp" />
     <ClCompile Include="Interpreter.cpp" />
     <ClCompile Include="MMI.cpp" />
     <ClCompile Include="R5900.cpp" />
@@ -939,6 +941,8 @@
     <ClInclude Include="x86\iR5900Move.h" />
     <ClInclude Include="x86\iR5900MultDiv.h" />
     <ClInclude Include="x86\iR5900Shift.h" />
+    <ClInclude Include="InputSync.h" />
+    <ClInclude Include="InputSyncProtocol.h" />
     <ClInclude Include="IopBios.h" />
     <ClInclude Include="IopCounters.h" />
     <ClInclude Include="IopDma.h" />

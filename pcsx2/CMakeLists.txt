@@ -78,6 +78,8 @@ set(pcsx2Sources
 	HwWrite.cpp
 	LayeredSettingsInterface.cpp
 	INISettingsInterface.cpp
+	InputSync.cpp
+	InputSyncProtocol.cpp
 	Interpreter.cpp
 	IopBios.cpp
 	IopCounters.cpp
@@ -160,6 +162,8 @@ set(pcsx2Headers
 	Host.h
 	Hw.h
 	INISettingsInterface.h
+	InputSync.h
+	InputSyncProtocol.h
 	IopBios.h
 	IopCounters.h
 	IopDma.h

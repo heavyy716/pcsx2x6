@@ -176,6 +176,7 @@ private Q_SLOTS:
 	void onDiscordServerActionTriggered();
 	void onAboutActionTriggered();
 	void onToolsOpenDataDirectoryTriggered();
+	void onToolsNetplayTriggered();
 	void onToolsCoverDownloaderTriggered();
 #if !defined(__APPLE__)
 	void onCreateGameShortcutTriggered();
@@ -326,6 +327,7 @@ private:
 	bool m_was_disc_change_request = false;
 	bool m_is_closing = false;
 	bool m_is_temporarily_windowed = false;
+	QWidget* m_netplay_wait_dialog = nullptr;
 
 	QString m_last_fps_status;
 

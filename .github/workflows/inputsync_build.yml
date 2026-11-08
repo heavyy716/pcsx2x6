@@ -1,0 +1,43 @@
+name: SDBZ input-sync netplay build
+
+# Builds the Windows AVX2 MSVC configuration (for testing) and a CMake MSVC
+# build that also runs the unit tests, for the arcade input-sync netplay branch.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "heavyy716-sdbz-*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint_vs_proj_files:
+    name: Lint VS Project Files
+    runs-on: windows-2025-vs2026
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+      - name: Verify VS Project Files
+        run: .github\workflows\scripts\windows\validate-vs-filters.ps1
+
+  build_qt_avx2:
+    needs: lint_vs_proj_files
+    name: "AVX2"
+    uses: ./.github/workflows/windows_build_qt.yml
+    with:
+      jobName: "MSVC AVX2"
+      artifactPrefixName: "pcsx2x6-inputsync-windows-x64-avx2"
+      configuration: Release AVX2
+    secrets: inherit
+
+  build_qt_cmake:
+    name: "CMake"
+    uses: ./.github/workflows/windows_build_qt.yml
+    with:
+      jobName: "CMake MSVC"
+      artifactPrefixName: "pcsx2x6-inputsync-windows-x64-cmake"
+      configuration: CMake
+      buildSystem: cmake
+    secrets: inherit

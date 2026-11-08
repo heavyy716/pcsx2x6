@@ -165,6 +165,18 @@ namespace ACJV {
     float GetBrake(); // host brake, 0...1
     void InsertCoin(u32 slot);
 
+    // Input sync (netplay/record/replay): while enabled, the game only sees the input latched once per frame.
+    struct SyncFrame
+    {
+        u16 buttons[JVS_PLAYER_COUNT];
+        u8 coins[JVS_PLAYER_COUNT]; // coin inserts during this frame
+        u8 test;                    // test switch byte (TESTMODE bit)
+    };
+    void SetInputSyncEnabled(bool enabled);
+    void CaptureLiveInput(SyncFrame* out); // live switches + coin inserts since the last capture (consumed)
+    void LatchInput(const SyncFrame& in);  // switches seen by the game until the next latch; coins are added
+    u16 GetDIPSwitchBits();
+
     bool GetDIPSwitchState(u32 index);
     void SetDIPSwitchState(u32 index, bool enabled);
     void ToggleDIPSwitchState(u32 index);

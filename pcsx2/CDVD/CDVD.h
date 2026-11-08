@@ -6,6 +6,7 @@
 #include "CDVDcommon.h"
 
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -168,6 +169,7 @@ extern void cdvdReadLanguageParams(u8* config);
 
 extern void cdvdLoadNVRAM();
 extern void cdvdSaveNVRAM();
+extern std::span<u8> cdvdGetNVRAM();
 extern void cdvdReset();
 extern void cdvdVsync();
 extern void cdvdActionInterrupt();

@@ -4,6 +4,7 @@ on:
   push:
     branches-ignore:
       - "l10n_master"
+      - "heavyy716-sdbz-*"
   pull_request:
     branches:
       - master

@@ -9,8 +9,11 @@
 
 #include "ACATA.h"
 #include "ACATA_IO_CHD.h"
+#include "InputSync.h"
 
 #include <cstring>
+#include <unordered_map>
+#include <vector>
 
 #if __POSIX__
 #define INVALID_HANDLE_VALUE -1
@@ -34,6 +37,22 @@ u32 ACATA::TH::nsector;
 s64 ACATA::TH::LBA;
 
 ChdImage CHD;
+
+// While input sync is active, writes go to memory instead of the image so both sides (and replays) start from the
+// same disk contents and the user's image is left untouched. Only touched from the CPU thread (DEV9 DMA).
+static std::unordered_map<s64, std::vector<u8>> s_write_overlay;
+
+static void ApplyWriteOverlay(u8* dst, s64 lba, u32 nsector, u32 sectorsize)
+{
+	if (s_write_overlay.empty())
+		return;
+	for (u32 i = 0; i < nsector; i++)
+	{
+		const auto it = s_write_overlay.find(lba + i);
+		if (it != s_write_overlay.end())
+			std::memcpy(dst + static_cast<size_t>(i) * sectorsize, it->second.data(), sectorsize);
+	}
+}
 
 
 void ACATA::TH::IO_Read(u32* addr, u32 size) {
@@ -66,6 +85,7 @@ void ACATA::TH::IO_Read(u32* addr, u32 size) {
 			pxAssert(false);
 			abort();
 		}
+		ApplyWriteOverlay(reinterpret_cast<u8*>(addr), lba, nsector, sectorsize);
 	}
 	{
 		std::lock_guard ioSignallock(ioMutex);
@@ -80,6 +100,12 @@ void ACATA::TH::IO_Write(u32* addr, u32 size) {
 		u64 size2 = (u64)sectorsize * nsector;
 		if (size != size2)
 			Console.Error("%s> mismatch %ld vs %ld", __FUNCTION__, size, size2);
+		if (InputSync::IsActive()) {
+			const u8* src = reinterpret_cast<const u8*>(addr);
+			for (u32 i = 0; i < nsector; i++)
+				s_write_overlay[lba + i].assign(src + static_cast<size_t>(i) * sectorsize, src + static_cast<size_t>(i + 1) * sectorsize);
+			return;
+		}
 		if (FileSystem::FSeek64(IMAGE, pos, SEEK_SET) != 0) {
 			Console.ErrorFmt("ACATA:IO_Write: failed to seek pos:{}", pos);
 			return;
@@ -188,6 +214,7 @@ int ACATA::TH::IO_OpenImage() {
 }
 
 int ACATA::TH::IO_CloseImage() {
+	s_write_overlay.clear();
 	if (isCHD) {
 		Console.WriteLn("%s CHD", __FUNCTION__);
 		CHD.Close();

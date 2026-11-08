@@ -22,6 +22,7 @@
 #include "ImGui/ImGuiManager.h"
 #include "ImGui/ImGuiOverlays.h"
 #include "Input/InputManager.h"
+#include "InputSync.h"
 #include "IopBios.h"
 #include "MTGS.h"
 #include "MTVU.h"
@@ -679,6 +680,7 @@ void VMManager::LoadCoreSettings(SettingsInterface& si)
 	SettingsLoadWrapper slw(si);
 	EmuConfig.LoadSave(slw);
 	Patch::ApplyPatchSettingOverrides();
+	InputSync::ApplyCoreSettingOverrides(si);
 
 	// Achievements hardcore mode disallows setting some configuration options.
 	EnforceAchievementsChallengeModeSettings();
@@ -1577,6 +1579,9 @@ VMBootResult VMManager::Initialize(const VMBootParameters& boot_params, Error* e
 	Host::OnVMStarting();
 	VMManager::Internal::ResetVMHotkeyState();
 
+	InputSync::Prepare();
+	ScopedGuard end_input_sync = [] { InputSync::EndSession(); };
+
 	ScopedGuard close_state = [] {
 		if (GSDumpReplayer::IsReplayingDump())
 			GSDumpReplayer::Shutdown();
@@ -1717,6 +1722,31 @@ VMBootResult VMManager::Initialize(const VMBootParameters& boot_params, Error* e
 		Hle_ClearHostRoot();
 	}
 
+	if (InputSync::IsActive())
+	{
+		if (s_acgame.empty() || GSDumpReplayer::IsReplayingDump())
+		{
+			Error::SetString(error, "Netplay and input recordings only work with arcade games (.acgame files).");
+			return VMBootResult::StartupFailure;
+		}
+		if (!state_to_load.empty())
+		{
+			Error::SetString(error, "Save states can't be used with netplay or input recordings.");
+			return VMBootResult::StartupFailure;
+		}
+
+		InputSync::SessionInfo sync_info;
+		sync_info.game_id = ACJV::GetGameId().empty() ? std::string(s_disc_serial) : ACJV::GetGameId();
+		sync_info.elf_path = s_elf_override;
+		sync_info.media_size = ACATA::TH::IMAGESIZE;
+		sync_info.dongle_path = EmuConfig.FullpathToMcd(0);
+		if (!InputSync::Connect(sync_info, error))
+			return VMBootResult::StartupFailure;
+
+		// The joining side may have just received the host's emulation settings.
+		ApplyCoreSettings();
+	}
+
 	// Check for resuming and 'Boot and Debug' with hardcore mode.
 	// Why do we need the boot param? Because we need some way of telling BootSystem() that
 	// the user allowed HC mode to be disabled, because otherwise we'll ResetHardcoreMode()
@@ -1848,6 +1878,7 @@ VMBootResult VMManager::Initialize(const VMBootParameters& boot_params, Error* e
 	close_cdvd_files.Cancel();
 	unlock_cdvd.Cancel();
 	close_state.Cancel();
+	end_input_sync.Cancel();
 
 	if (EmuConfig.CdvdPrecache)
 		PrecacheCDVDFile();
@@ -1904,6 +1935,10 @@ void VMManager::Shutdown(bool save_resume_state)
 	// end input recording before clearing state
 	if (g_InputRecording.isActive())
 		g_InputRecording.stop();
+
+	// Netplay/replay sessions run on throwaway copies of NVRAM/SRAM/HDD, so don't write them back.
+	const bool input_sync_session = InputSync::IsActive();
+	InputSync::EndSession();
 
 	SaveSessionTime(s_disc_serial);
 	s_elf_override = {};
@@ -1967,7 +2002,7 @@ void VMManager::Shutdown(bool save_resume_state)
 
 	if (GSDumpReplayer::IsReplayingDump())
 		GSDumpReplayer::Shutdown();
-	else {
+	else if (!input_sync_session) {
 		cdvdSaveNVRAM();
 		ACSRAM::WriteFile();
 	}
@@ -2004,6 +2039,13 @@ bool VMManager::RequestReset()
 void VMManager::Reset()
 {
 	pxAssert(HasValidVM());
+
+	if (InputSync::IsActive())
+	{
+		Host::AddIconOSDMessage("InputSyncReset", ICON_FA_TRIANGLE_EXCLAMATION,
+			"Reset isn't available during netplay or an input recording.", Host::OSD_WARNING_DURATION);
+		return;
+	}
 
 	// If we're running, we're probably going to be executing this at event test time,
 	// at vsync, which happens in the middle of event handling. Resetting everything
@@ -2138,6 +2180,12 @@ bool VMManager::DoLoadState(const char* filename, Error* error)
 	if (GSDumpReplayer::IsReplayingDump())
 	{
 		Error::SetString(error, TRANSLATE_STR("VMManager", "Cannot load state while replaying a GS dump."));
+		return false;
+	}
+
+	if (InputSync::IsActive())
+	{
+		Error::SetString(error, "Save states can't be loaded during netplay or an input recording.");
 		return false;
 	}
 
@@ -3180,6 +3228,9 @@ void VMManager::Internal::PollInputOnCPUThread()
 {
 	Host::PumpMessagesOnCPUThread();
 	InputManager::PollSources();
+
+	// Latch this frame's arcade input (local, recorded or from the network peer).
+	InputSync::OnVsync();
 
 	if (EmuConfig.EnableRecordingTools)
 	{

@@ -29,6 +29,7 @@
 #include "pcsx2/ImGui/ImGuiManager.h"
 #include "pcsx2/ImGui/ImGuiOverlays.h"
 #include "pcsx2/Input/InputManager.h"
+#include "pcsx2/InputSync.h"
 #include "pcsx2/MTGS.h"
 #include "pcsx2/PerformanceMetrics.h"
 #include "pcsx2/SPU2/spu2.h"
@@ -2106,6 +2107,17 @@ void QtHost::PrintCommandLineHelp(const std::string_view progname)
 	std::fprintf(stderr, "  -debugger: Open debugger and break on entry point.\n");
 	std::fprintf(stderr, "  -turbo: Enters turbo (fast forward) mode after starting.\n");
 	std::fprintf(stderr, "  -unlimited: Enters unlimited (fast forward) mode after starting.\n");
+	std::fprintf(stderr, "\n  Arcade netplay / input sync (arcade .acgame files only):\n");
+	std::fprintf(stderr, "  -netplay-host: Hosts a netplay game; the other player joins with your address.\n");
+	std::fprintf(stderr, "  -netplay-join <address[:port]>: Joins a netplay game hosted at address.\n");
+	std::fprintf(stderr, "  -netplay-port <port>: UDP port to host on (default 7656).\n");
+	std::fprintf(stderr, "  -netplay-side <1|2>: Which player the host controls (default 1).\n");
+	std::fprintf(stderr, "  -netplay-delay <frames>: Input delay in frames, set by the host (default 3).\n");
+	std::fprintf(stderr, "  -input-record <file>: Records arcade inputs from the start of the game.\n");
+	std::fprintf(stderr, "  -input-replay <file>: Plays back a recording made with -input-record.\n");
+	std::fprintf(stderr, "  -sync-hashlog <file>: Writes periodic RAM hashes to a text file (for desync testing).\n");
+	std::fprintf(stderr, "  -sync-hash-interval <frames>: Frames between RAM hashes (default 120).\n");
+	std::fprintf(stderr, "  -sync-exit-after <frames>: Exits after this many frames (for testing).\n");
 #ifdef ENABLE_RAINTEGRATION
 	std::fprintf(stderr, "  -raintegration: Use RAIntegration instead of built-in achievement support.\n");
 #endif
@@ -2126,6 +2138,30 @@ std::shared_ptr<VMBootParameters>& QtHost::AutoBoot(std::shared_ptr<VMBootParame
 bool QtHost::ParseCommandLineOptions(const QStringList& args, std::shared_ptr<VMBootParameters>& autoboot)
 {
 	bool no_more_args = false;
+	InputSync::Options sync_options;
+	bool sync_options_set = false;
+	const auto set_sync_mode = [&sync_options](InputSync::Mode mode) {
+		if (sync_options.mode != InputSync::Mode::Off && sync_options.mode != mode)
+		{
+			QMessageBox::critical(nullptr, QStringLiteral("Error"),
+				QStringLiteral("Only one of -netplay-host, -netplay-join, -input-record and -input-replay can be used."));
+			return false;
+		}
+		sync_options.mode = mode;
+		return true;
+	};
+	const auto parse_sync_number = [](const QString& str, u32 min_value, u32 max_value, u32* out) {
+		bool ok = false;
+		const uint value = str.toUInt(&ok);
+		if (!ok || value < min_value || value > max_value)
+		{
+			QMessageBox::critical(nullptr, QStringLiteral("Error"),
+				QStringLiteral("Invalid number '%1' (must be %2 to %3).").arg(str).arg(min_value).arg(max_value));
+			return false;
+		}
+		*out = static_cast<u32>(value);
+		return true;
+	};
 
 	if (args.empty())
 	{
@@ -2269,6 +2305,76 @@ bool QtHost::ParseCommandLineOptions(const QStringList& args, std::shared_ptr<VM
 				AutoBoot(autoboot)->start_unlimited = true;
 				continue;
 			}
+			else if (CHECK_ARG(QStringLiteral("-netplay-host")))
+			{
+				if (!set_sync_mode(InputSync::Mode::Host))
+					return false;
+				sync_options_set = true;
+				continue;
+			}
+			else if (CHECK_ARG_PARAM(QStringLiteral("-netplay-join")))
+			{
+				if (!set_sync_mode(InputSync::Mode::Join))
+					return false;
+				sync_options.address = (++it)->toStdString();
+				sync_options_set = true;
+				continue;
+			}
+			else if (CHECK_ARG_PARAM(QStringLiteral("-netplay-port")))
+			{
+				u32 port;
+				if (!parse_sync_number(*(++it), 1, 65535, &port))
+					return false;
+				sync_options.port = static_cast<u16>(port);
+				continue;
+			}
+			else if (CHECK_ARG_PARAM(QStringLiteral("-netplay-side")))
+			{
+				u32 side;
+				if (!parse_sync_number(*(++it), 1, 2, &side))
+					return false;
+				sync_options.side = side - 1;
+				continue;
+			}
+			else if (CHECK_ARG_PARAM(QStringLiteral("-netplay-delay")))
+			{
+				if (!parse_sync_number(*(++it), 0, 30, &sync_options.delay))
+					return false;
+				continue;
+			}
+			else if (CHECK_ARG_PARAM(QStringLiteral("-input-record")))
+			{
+				if (!set_sync_mode(InputSync::Mode::Record))
+					return false;
+				sync_options.path = (++it)->toStdString();
+				sync_options_set = true;
+				continue;
+			}
+			else if (CHECK_ARG_PARAM(QStringLiteral("-input-replay")))
+			{
+				if (!set_sync_mode(InputSync::Mode::Replay))
+					return false;
+				sync_options.path = (++it)->toStdString();
+				sync_options_set = true;
+				continue;
+			}
+			else if (CHECK_ARG_PARAM(QStringLiteral("-sync-hashlog")))
+			{
+				sync_options.hash_log = (++it)->toStdString();
+				continue;
+			}
+			else if (CHECK_ARG_PARAM(QStringLiteral("-sync-hash-interval")))
+			{
+				if (!parse_sync_number(*(++it), 1, 100000, &sync_options.hash_interval))
+					return false;
+				continue;
+			}
+			else if (CHECK_ARG_PARAM(QStringLiteral("-sync-exit-after")))
+			{
+				if (!parse_sync_number(*(++it), 1, 100000000, &sync_options.stop_after_frames))
+					return false;
+				continue;
+			}
 #ifdef ENABLE_RAINTEGRATION
 			else if (CHECK_ARG(QStringLiteral("-raintegration")))
 			{
@@ -2309,6 +2415,17 @@ bool QtHost::ParseCommandLineOptions(const QStringList& args, std::shared_ptr<VM
 	{
 		Console.Warning("Both turbo and unlimited frame limit modes requested. Using unlimited.");
 		autoboot->start_turbo.reset();
+	}
+
+	if (sync_options_set)
+	{
+		if (!autoboot)
+		{
+			QMessageBox::critical(nullptr, QStringLiteral("Error"),
+				QStringLiteral("Netplay and input recording need a game (.acgame file) to boot."));
+			return false;
+		}
+		InputSync::SetPendingOptions(sync_options);
 	}
 
 	// if we don't have autoboot, we definitely don't want batch mode (because that'll skip

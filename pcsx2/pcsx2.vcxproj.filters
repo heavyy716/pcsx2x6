@@ -590,6 +590,12 @@
     <ClCompile Include="FPU.cpp">
       <Filter>System\Ps2\EmotionEngine\EE\Interpreter</Filter>
     </ClCompile>
+    <ClCompile Include="InputSync.cpp">
+      <Filter>Misc</Filter>
+    </ClCompile>
+    <ClCompile Include="InputSyncProtocol.cpp">
+      <Filter>Misc</Filter>
+    </ClCompile>
     <ClCompile Include="Interpreter.cpp">
       <Filter>System\Ps2\EmotionEngine\EE\Interpreter</Filter>
     </ClCompile>
@@ -1633,6 +1639,12 @@
     </ClInclude>
     <ClInclude Include="x86\iR5900Shift.h">
       <Filter>System\Ps2\EmotionEngine\EE\Dynarec</Filter>
+    </ClInclude>
+    <ClInclude Include="InputSync.h">
+      <Filter>Misc</Filter>
+    </ClInclude>
+    <ClInclude Include="InputSyncProtocol.h">
+      <Filter>Misc</Filter>
     </ClInclude>
     <ClInclude Include="IopBios.h">
       <Filter>System\Ps2\Iop</Filter>
