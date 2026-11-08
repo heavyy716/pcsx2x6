@@ -15,6 +15,7 @@
 #include "common/FileSystem.h"
 
 #include "fmt/format.h"
+#define XXH_INLINE_ALL 1
 #include "xxhash.h"
 
 #include <algorithm>
