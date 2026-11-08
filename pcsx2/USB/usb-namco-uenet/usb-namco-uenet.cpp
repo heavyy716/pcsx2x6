@@ -88,7 +88,6 @@ namespace usb_namco_uenet
 		u64 rx_frames = 0;
 		u64 rx_dropped = 0;
 		bool noted_foreign_dst = false;
-		bool noted_intr = false;
 	};
 
 	// LinkProbe-style dedup: the first four hits of a key and every power-of-two hit.
@@ -274,6 +273,13 @@ namespace usb_namco_uenet
 			std::vector<u8> chunk(n);
 			if (n > 0)
 				usb_packet_copy(p, chunk.data(), n);
+			u64 hit;
+			if (ShouldLog(s, (0xB2ull << 40) | static_cast<u64>(n), &hit))
+			{
+				char hex[64];
+				FormatBytes(hex, sizeof(hex), chunk.data(), std::min(n, 16));
+				LinkProbe::Note("UENET bulk OUT ep2 %d bytes: %s (hit %llu)", n, hex, static_cast<unsigned long long>(hit));
+			}
 			const int errors = s->model.FeedTx(chunk.data(), n, [s](const u8* frame, int len) {
 				s->tx_frames++;
 				LinkProbe::Frame("TX(usb)", frame, len);
@@ -291,6 +297,10 @@ namespace usb_namco_uenet
 		if (p->pid == USB_TOKEN_IN && ep == 1)
 		{
 			PollLink(s);
+			u64 hit;
+			if (ShouldLog(s, (0xB1ull << 40) | (s->rxq.empty() ? 0 : 0x100000) | static_cast<u64>(p->buffer_size), &hit))
+				LinkProbe::Note("UENET bulk IN ep1 poll, buffer %d bytes, %s (hit %llu)", static_cast<int>(p->buffer_size),
+					s->rxq.empty() ? "no frame queued (NAK)" : "frame queued", static_cast<unsigned long long>(hit));
 			if (s->rxq.empty())
 			{
 				p->status = USB_RET_NAK;
@@ -311,11 +321,10 @@ namespace usb_namco_uenet
 
 		if (p->pid == USB_TOKEN_IN && ep == 3)
 		{
-			if (!s->noted_intr)
-			{
-				s->noted_intr = true;
-				LinkProbe::Note("UENET interrupt endpoint polled (NAK; link status is static)");
-			}
+			u64 hit;
+			if (ShouldLog(s, (0xB3ull << 40) | static_cast<u64>(p->buffer_size), &hit))
+				LinkProbe::Note("UENET interrupt IN ep3 poll, buffer %d bytes (NAK; link status is static) (hit %llu)",
+					static_cast<int>(p->buffer_size), static_cast<unsigned long long>(hit));
 			p->status = USB_RET_NAK;
 			return;
 		}
